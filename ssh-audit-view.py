@@ -25,7 +25,7 @@ def clean_terminal(raw):
         if char == "\b":
             if line: line.pop()
         elif char == "\r":
-            line.clear()
+            pass
         elif char == "\n":
             lines.append("".join(line))
             line.clear()
@@ -121,7 +121,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
 function cleanTerminal(raw){
   raw=raw.replace(/\\x1b(?:\\[[0-?]*[ -/]*[@-~]|\\][^\\x07\\x1b]*(?:\\x07|\\x1b\\\\)?|[=>]|[\\s\\S])?/g,'');
   const lines=[];let line='';
-  for(const c of raw){if(c==='\\b'){line=line.slice(0,-1)}else if(c==='\\r'){line=''}else if(c==='\\n'){lines.push(line);line=''}else if(c==='\\t'||c.codePointAt(0)>=32&&c.codePointAt(0)!==127){line+=c}}
+  for(const c of raw){if(c==='\\b'){line=line.slice(0,-1)}else if(c==='\\r'){}else if(c==='\\n'){lines.push(line);line=''}else if(c==='\\t'||c.codePointAt(0)>=32&&c.codePointAt(0)!==127){line+=c}}
   return [...lines,line].join('\\n').replace(/\\[(?:\\d{1,3}(?:;\\d{1,3})*)?[ABCDGHJKfsum](?![A-Za-z0-9])/g,'').replace(/\\uFFFD/g,'');
 }
 document.querySelector('#play').onclick=async()=>{const events=await(await fetch('?id=""" + sid + """&replay=1')).json();const screen=document.querySelector('pre:last-of-type');screen.textContent='';let raw='';for(const [delay,chunk] of events){await new Promise(r=>setTimeout(r,Math.min(delay*1000,2000)));raw+=chunk;screen.textContent=cleanTerminal(raw)}}
