@@ -13,7 +13,26 @@ import os
 
 ROOT = pathlib.Path.home() / "ssh-audit"
 ANSI = re.compile(r"\x1b(?:\[[0-?]*[ -/]*[@-~]|\][^\x07]*(?:\x07|\x1b\\))")
+ESCAPES = re.compile(r"\x1b(?:\[[0-?]*[ -/]*[@-~]|\][^\x07\x1b]*(?:\x07|\x1b\\)?|[=>]|.)?", re.DOTALL)
+ORPHAN_CSI = re.compile(r"\[(?:\d{1,3}(?:;\d{1,3})*)?[ABCDGHJKfsum](?![A-Za-z0-9])")
 SIZES = (50, 100, 500, 1000)
+
+def clean_terminal(raw):
+    text = ESCAPES.sub("", raw)
+    lines = []
+    line = []
+    for char in text:
+        if char == "\b":
+            if line: line.pop()
+        elif char == "\r":
+            line.clear()
+        elif char == "\n":
+            lines.append("".join(line))
+            line.clear()
+        elif char == "\t" or ord(char) >= 32 and ord(char) != 127:
+            line.append(char)
+    lines.append("".join(line))
+    return ORPHAN_CSI.sub("", "\n".join(lines)).replace("\ufffd", "")
 
 def url(**params):
     return "/?" + urllib.parse.urlencode(params)
@@ -94,10 +113,19 @@ class Handler(http.server.BaseHTTPRequestHandler):
             for ext in (["stdout", "stderr"] if row.get("kind") == "command" else ["terminal"]):
                 path = ROOT / (sid + "." + ext)
                 content = path.read_bytes().decode("utf-8", "replace") if path.exists() else ""
-                body.append("<h3>" + ext + "</h3><pre>" + html.escape(ANSI.sub("", content)) + "</pre>")
+                shown = clean_terminal(content) if ext == "terminal" else content
+                body.append("<h3>" + ext + "</h3><pre>" + html.escape(shown) + "</pre>")
             if row.get("kind") == "interactive":
                 body.append("<button id='play'>Reproduzir</button><small> Reprodução da saída registrada.</small>")
-                body.append("""<script>document.querySelector('#play').onclick=async()=>{const events=await(await fetch('?id=""" + sid + """&replay=1')).json();const screen=document.querySelector('pre:last-of-type');screen.textContent='';for(const [delay,chunk] of events){await new Promise(r=>setTimeout(r,Math.min(delay*1000,2000)));screen.textContent+=chunk.replace(/\\x1b\\[[0-?]*[ -/]*[@-~]/g,'');}}</script>""")
+                body.append("""<script>
+function cleanTerminal(raw){
+  raw=raw.replace(/\\x1b(?:\\[[0-?]*[ -/]*[@-~]|\\][^\\x07\\x1b]*(?:\\x07|\\x1b\\\\)?|[=>]|[\\s\\S])?/g,'');
+  const lines=[];let line='';
+  for(const c of raw){if(c==='\\b'){line=line.slice(0,-1)}else if(c==='\\r'){line=''}else if(c==='\\n'){lines.push(line);line=''}else if(c==='\\t'||c.codePointAt(0)>=32&&c.codePointAt(0)!==127){line+=c}}
+  return [...lines,line].join('\\n').replace(/\\[(?:\\d{1,3}(?:;\\d{1,3})*)?[ABCDGHJKfsum](?![A-Za-z0-9])/g,'').replace(/\\uFFFD/g,'');
+}
+document.querySelector('#play').onclick=async()=>{const events=await(await fetch('?id=""" + sid + """&replay=1')).json();const screen=document.querySelector('pre:last-of-type');screen.textContent='';let raw='';for(const [delay,chunk] of events){await new Promise(r=>setTimeout(r,Math.min(delay*1000,2000)));raw+=chunk;screen.textContent=cleanTerminal(raw)}}
+</script>""")
             body += nav
         else:
             body.append("<form method='get'><input name='q' type='search' placeholder='Buscar sessões e saídas' value='" + html.escape(query, quote=True) + "'> <select name='n'>")
