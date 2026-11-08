@@ -1,0 +1,13 @@
+__pycache__/
+*.pyc
+*.key
+*.pem
+*.log
+*.stdout
+*.stderr
+*.terminal
+*.timing
+ssh-audit/
+.viewer-password
+.viewer-key.pem
+.viewer-cert.pem
