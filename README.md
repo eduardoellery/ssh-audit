@@ -71,3 +71,11 @@ Abra uma sessão interativa, execute alguns comandos e saia com `exit 3`; verifi
 ## Estado da VM original
 
 Na VM usada no desenvolvimento, o usuário é `kali`, a interface `eth0` recebe DHCP e também tem `192.168.0.240/24`. A versão observada foi Kali 2026.3, com `script` do util-linux 2.42.2; `asciinema` não foi necessário. O SSH e o visualizador foram testados, inclusive stdout/stderr separados, códigos de saída, SCP, busca e reprodução. Esses valores são exemplos da VM original, não pressupostos para uma nova instalação.
+
+## Histórico de mudanças
+
+- **2026-11-08:** Publicação inicial do wrapper SSH, instalador e visualizador HTTPS local.
+- **2026-11-08:** Busca nas sessões e saídas, paginação de 50 a 1000 entradas e navegação entre resultados filtrados.
+- **2026-11-08:** Melhorias na leitura de sessões interativas: remoção de controles visíveis, preservação da saída após retornos de carro e reconstrução de comandos editados com movimentos do cursor.
+
+As mudanças futuras serão acrescentadas aqui enquanto o projeto permanecer pequeno. O histórico completo de código está nos commits e PRs do GitHub.
