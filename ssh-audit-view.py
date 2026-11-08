@@ -13,26 +13,73 @@ import os
 
 ROOT = pathlib.Path.home() / "ssh-audit"
 ANSI = re.compile(r"\x1b(?:\[[0-?]*[ -/]*[@-~]|\][^\x07]*(?:\x07|\x1b\\))")
-ESCAPES = re.compile(r"\x1b(?:\[[0-?]*[ -/]*[@-~]|\][^\x07\x1b]*(?:\x07|\x1b\\)?|[=>]|.)?", re.DOTALL)
 ORPHAN_CSI = re.compile(r"\[(?:\d{1,3}(?:;\d{1,3})*)?[ABCDGHJKfsum](?![A-Za-z0-9])")
 SIZES = (50, 100, 500, 1000)
 
-def clean_terminal(raw):
-    text = ESCAPES.sub("", raw)
-    lines = []
-    line = []
-    for char in text:
-        if char == "\b":
-            if line: line.pop()
-        elif char == "\r":
-            pass
-        elif char == "\n":
-            lines.append("".join(line))
-            line.clear()
-        elif char == "\t" or ord(char) >= 32 and ord(char) != 127:
-            line.append(char)
-    lines.append("".join(line))
-    return ORPHAN_CSI.sub("", "\n".join(lines)).replace("\ufffd", "")
+class TerminalRenderer:
+    def __init__(self):
+        self.lines = [[]]
+        self.row = self.col = 0
+        self.state = "text"
+        self.csi = ""
+
+    def feed(self, text):
+        for char in text:
+            if self.state == "escape":
+                if char == "[": self.state, self.csi = "csi", ""
+                elif char == "]": self.state = "osc"
+                else: self.state = "text"
+                continue
+            if self.state == "csi":
+                if "@" <= char <= "~":
+                    self.control(char)
+                    self.state = "text"
+                else: self.csi += char
+                continue
+            if self.state == "osc":
+                if char == "\x07": self.state = "text"
+                elif char == "\x1b": self.state = "osc_escape"
+                continue
+            if self.state == "osc_escape":
+                self.state = "text" if char == "\\" else "osc"
+                continue
+            if char == "\x1b": self.state = "escape"
+            elif char == "\r": self.col = 0
+            elif char == "\n": self.row += 1; self.col = 0
+            elif char == "\b": self.col = max(0, self.col - 1)
+            elif char == "\t": self.col = (self.col // 8 + 1) * 8
+            elif ord(char) >= 32 and ord(char) != 127 and char != "\ufffd":
+                self.ensure_row()
+                line = self.lines[self.row]
+                if self.col >= len(line): line.extend(" " * (self.col - len(line) + 1))
+                line[self.col] = char
+                self.col += 1
+
+    def ensure_row(self):
+        while self.row >= len(self.lines): self.lines.append([])
+
+    def control(self, code):
+        args = self.csi.lstrip("?").split(";")
+        try: n = int(args[0]) if args[0] else 1
+        except ValueError: n = 1
+        if code == "D": self.col = max(0, self.col - n)
+        elif code == "C": self.col += n
+        elif code == "G": self.col = max(0, n - 1)
+        elif code == "A": self.row = max(0, self.row - n)
+        elif code == "B": self.row += n
+        elif code in "Hf":
+            self.row = max(0, n - 1)
+            try: self.col = max(0, int(args[1]) - 1)
+            except (IndexError, ValueError): self.col = 0
+        elif code in "KJ":
+            self.ensure_row()
+            self.lines[self.row] = self.lines[self.row][:self.col]
+            if code == "J": self.lines = self.lines[:self.row + 1]
+
+    def render(self):
+        lines = ["".join(line).rstrip() for line in self.lines]
+        while lines and not lines[-1]: lines.pop()
+        return ORPHAN_CSI.sub("", "\n".join(lines)).replace("\ufffd", "")
 
 def url(**params):
     return "/?" + urllib.parse.urlencode(params)
@@ -76,12 +123,25 @@ class Handler(http.server.BaseHTTPRequestHandler):
             if not sid or not output.is_file() or not timing.is_file():
                 self.send_error(404); return
             decoder = codecs.getincrementaldecoder("utf-8")("replace")
+            renderer = TerminalRenderer()
             events = []
+            previous = ""
             with output.open("rb") as stream:
                 for line in timing.read_text().splitlines():
                     try: delay, count = line.split(); delay = float(delay); count = int(count)
                     except ValueError: continue
-                    events.append([delay, decoder.decode(stream.read(count))])
+                    renderer.feed(decoder.decode(stream.read(count)))
+                    current = renderer.render()
+                    keep = 0
+                    while keep < min(len(previous), len(current)) and previous[keep] == current[keep]: keep += 1
+                    events.append([delay, keep, current[keep:]])
+                    previous = current
+                renderer.feed(decoder.decode(stream.read(), final=True))
+                current = renderer.render()
+                if current != previous:
+                    keep = 0
+                    while keep < min(len(previous), len(current)) and previous[keep] == current[keep]: keep += 1
+                    events.append([0, keep, current[keep:]])
             data = json.dumps(events).encode()
             self.send_response(200); self.send_header("Content-Type", "application/json")
             self.send_header("Content-Length", str(len(data))); self.end_headers(); self.wfile.write(data)
@@ -113,19 +173,15 @@ class Handler(http.server.BaseHTTPRequestHandler):
             for ext in (["stdout", "stderr"] if row.get("kind") == "command" else ["terminal"]):
                 path = ROOT / (sid + "." + ext)
                 content = path.read_bytes().decode("utf-8", "replace") if path.exists() else ""
-                shown = clean_terminal(content) if ext == "terminal" else content
+                if ext == "terminal":
+                    renderer = TerminalRenderer()
+                    renderer.feed(content)
+                    shown = renderer.render()
+                else: shown = content
                 body.append("<h3>" + ext + "</h3><pre>" + html.escape(shown) + "</pre>")
             if row.get("kind") == "interactive":
                 body.append("<button id='play'>Reproduzir</button><small> Reprodução da saída registrada.</small>")
-                body.append("""<script>
-function cleanTerminal(raw){
-  raw=raw.replace(/\\x1b(?:\\[[0-?]*[ -/]*[@-~]|\\][^\\x07\\x1b]*(?:\\x07|\\x1b\\\\)?|[=>]|[\\s\\S])?/g,'');
-  const lines=[];let line='';
-  for(const c of raw){if(c==='\\b'){line=line.slice(0,-1)}else if(c==='\\r'){}else if(c==='\\n'){lines.push(line);line=''}else if(c==='\\t'||c.codePointAt(0)>=32&&c.codePointAt(0)!==127){line+=c}}
-  return [...lines,line].join('\\n').replace(/\\[(?:\\d{1,3}(?:;\\d{1,3})*)?[ABCDGHJKfsum](?![A-Za-z0-9])/g,'').replace(/\\uFFFD/g,'');
-}
-document.querySelector('#play').onclick=async()=>{const events=await(await fetch('?id=""" + sid + """&replay=1')).json();const screen=document.querySelector('pre:last-of-type');screen.textContent='';let raw='';for(const [delay,chunk] of events){await new Promise(r=>setTimeout(r,Math.min(delay*1000,2000)));raw+=chunk;screen.textContent=cleanTerminal(raw)}}
-</script>""")
+                body.append("""<script>document.querySelector('#play').onclick=async()=>{const events=await(await fetch('?id=""" + sid + """&replay=1')).json();const screen=document.querySelector('pre:last-of-type');screen.textContent='';let shown='';for(const [delay,keep,tail] of events){await new Promise(r=>setTimeout(r,Math.min(delay*1000,2000)));shown=shown.slice(0,keep)+tail;screen.textContent=shown}}</script>""")
             body += nav
         else:
             body.append("<form method='get'><input name='q' type='search' placeholder='Buscar sessões e saídas' value='" + html.escape(query, quote=True) + "'> <select name='n'>")

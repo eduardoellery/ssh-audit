@@ -8,7 +8,7 @@ Este projeto nasceu da necessidade de saber quais comandos uma IA executou no me
 - Sessões interativas: saída do terminal e arquivo de tempos do `script`, com reprodução no navegador ou por `scriptreplay`.
 - Arquivos locais no Kali em `~/ssh-audit/`, privados para o usuário. Cada sessão recebe um ID próprio.
 - Visualizador HTTPS na porta 8765, protegido por senha gerada durante a instalação. A lista tem busca por palavras nos comandos, metadados e saídas, paginação e navegação entre resultados filtrados.
-- Na visualização de sessões interativas, sequências de controle ANSI, retrocessos e fragmentos como `[1m` são removidos para facilitar a leitura. Os arquivos originais permanecem intactos.
+- Na visualização de sessões interativas, o renderizador interpreta movimentos comuns do cursor, retrocessos e limpeza de linha para reconstruir comandos editados com Home. Cores e sequências ANSI são ocultadas; os arquivos originais permanecem intactos. Aplicações de tela cheia podem exigir um emulador de terminal completo para fidelidade perfeita.
 
 Saídas redirecionadas pelo comando para arquivos não são gravadas como stdout/stderr. Em sessões interativas, stdout e stderr aparecem combinados no terminal. A transferência SFTP continua funcionando, mas seu conteúdo não é gravado. A solução não procura impedir adulteração deliberada dos registros nem faz centralização ou rotação automática. Os registros podem crescer bastante; acompanhe o espaço disponível.
 
