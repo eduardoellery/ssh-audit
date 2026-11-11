@@ -7,7 +7,7 @@ Este projeto nasceu da necessidade de saber quais comandos uma IA executou no me
 - `ssh usuario@kali "comando"`: comando original, stdout, stderr, início, fim e código de saída.
 - Sessões interativas: saída do terminal e arquivo de tempos do `script`, com reprodução no navegador ou por `scriptreplay`.
 - Arquivos locais no Kali em `~/ssh-audit/`, privados para o usuário. Cada sessão recebe um ID próprio.
-- Visualizador HTTPS na porta 8765, protegido por senha gerada durante a instalação. A lista tem busca por palavras nos comandos, metadados e saídas, paginação e navegação entre resultados filtrados.
+- Visualizador HTTPS na porta 8765, protegido por senha gerada durante a instalação. A lista tem busca por palavras nos comandos, metadados e saídas, filtro por dia ou intervalo de dias, paginação e navegação entre resultados filtrados. As datas usam `America/Fortaleza` por padrão; ajuste `SSH_AUDIT_TZ` no serviço para outro fuso.
 - Na visualização de sessões interativas, o renderizador interpreta movimentos comuns do cursor, retrocessos e limpeza de linha para reconstruir comandos editados com Home. Cores e sequências ANSI são ocultadas; os arquivos originais permanecem intactos. Aplicações de tela cheia podem exigir um emulador de terminal completo para fidelidade perfeita.
 
 Saídas redirecionadas pelo comando para arquivos não são gravadas como stdout/stderr. Em sessões interativas, stdout e stderr aparecem combinados no terminal. A transferência SFTP continua funcionando, mas seu conteúdo não é gravado. A solução não procura impedir adulteração deliberada dos registros nem faz centralização ou rotação automática. Os registros podem crescer bastante; acompanhe o espaço disponível.
@@ -74,6 +74,7 @@ Na VM usada no desenvolvimento, o usuário é `kali`, a interface `eth0` recebe 
 
 ## Histórico de mudanças
 
+- **2026-11-11:** Filtro por dia específico ou intervalo de dias, combinado com a busca e preservado na navegação entre sessões.
 - **2026-11-08:** Publicação inicial do wrapper SSH, instalador e visualizador HTTPS local.
 - **2026-11-08:** Busca nas sessões e saídas, paginação de 50 a 1000 entradas e navegação entre resultados filtrados.
 - **2026-11-08:** Melhorias na leitura de sessões interativas: remoção de controles visíveis, preservação da saída após retornos de carro e reconstrução de comandos editados com movimentos do cursor.
